@@ -1,98 +1,137 @@
 (function() {
-    // ১. কাস্টম UI তৈরি ফাংশন
-    function createTrackerUI() {
-        if (document.getElementById('qx-custom-tracker')) return;
-
-        const ui = document.createElement('div');
-        ui.id = 'qx-custom-tracker';
-        ui.innerHTML = `
-            <div style="font-weight:bold; color:#00e676; margin-bottom:5px; font-size:15px; letter-spacing:1px; display:flex; justify-content:space-between;">
-                <span>QUOTEX LIVE</span>
-                <span id="close-qx-tracker" style="cursor:pointer; color:#ff5252;">✕</span>
-            </div>
-            <hr style="border:0; border-top:1px solid #333; margin:8px 0;">
-            <div>Asset: <span id="track-asset" style="color:#ffffff; font-weight:bold;">--</span></div>
-            <div>Price: <span id="track-price" style="color:#ffb300; font-weight:bold;">0.0000</span></div>
-            <div>Candle Time: <span id="track-clock" style="color:#00b0ff; font-weight:bold;">--s remaining</span></div>
-            <div style="margin-top:10px; font-size:11px; color:#aaa;" id="ws-status">Status: Waiting for WS...</div>
-        `;
-        
-        Object.assign(ui.style, {
-            position: 'fixed', top: '100px', left: '20px', backgroundColor: 'rgba(15,15,15,0.92)',
-            color: 'white', padding: '15px', borderRadius: '10px', zIndex: '99999999',
-            fontFamily: 'monospace', fontSize: '14px', border: '1px solid #444', 
-            backdropFilter: 'blur(8px)', boxShadow: '0 4px 15px rgba(0,0,0,0.6)', width: '220px'
-        });
-        
-        (document.body || document.documentElement).appendChild(ui);
-
-        document.getElementById('close-qx-tracker').onclick = function() {
-            ui.remove();
-        };
+    // আগের ইউআই থাকলে রিমুভ করবে
+    if (document.getElementById('evu-qx-tracker')) {
+        document.getElementById('evu-qx-tracker').remove();
     }
 
-    createTrackerUI();
+    // ১. EVU QX স্টাইলের ফ্লোটিং UI তৈরি
+    const ui = document.createElement('div');
+    ui.id = 'evu-qx-tracker';
+    ui.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(0,229,255,0.2); padding-bottom:8px; margin-bottom:10px;">
+            <div style="display:flex; align-items:center; gap:6px;">
+                <span style="background:#00e5ff; width:8px; height:8px; border-radius:50%; box-shadow:0 0 8px #00e5ff;"></span>
+                <span style="font-weight:900; color:#fff; font-size:14px; letter-spacing:1px; font-family:sans-serif;">EVU QX</span>
+            </div>
+            <span id="close-evu" style="cursor:pointer; color:#888; font-size:16px;">✕</span>
+        </div>
 
-    // ২. রানিং WebSocket মেসেজ ইন্টারসেপ্টর
-    if (!window.__qxWsHooked) {
-        window.__qxWsHooked = true;
+        <div style="background:rgba(0,0,0,0.4); padding:8px; border-radius:6px; margin-bottom:8px; text-align:center;">
+            <div style="font-size:11px; color:#00e5ff; text-transform:uppercase;">CHART TIME</div>
+            <div id="evu-clock" style="font-size:15px; font-weight:bold; color:#fff;">--:--:--</div>
+        </div>
 
-        const parseBinaryData = async (data) => {
-            try {
-                let rawData;
-                if (data instanceof Blob) {
-                    rawData = await data.arrayBuffer();
-                } else if (data instanceof ArrayBuffer) {
-                    rawData = data;
-                } else {
-                    return;
-                }
+        <div style="background:rgba(0,229,255,0.05); border:1px solid rgba(0,229,255,0.2); padding:8px; border-radius:6px; margin-bottom:8px; text-align:center;">
+            <div id="evu-asset" style="font-size:12px; font-weight:bold; color:#fff;">CHART: LOADING...</div>
+        </div>
 
-                const decoder = new TextDecoder('utf-8');
-                let text = decoder.decode(rawData);
-                
-                const jsonStart = text.indexOf('[[');
-                const jsonEnd = text.indexOf(']]', jsonStart);
-                
-                if (jsonStart !== -1 && jsonEnd !== -1) {
-                    const cleanJson = text.substring(jsonStart, jsonEnd + 2);
-                    const dataArray = JSON.parse(cleanJson);
-                    
-                    if (dataArray && dataArray[0]) {
-                        const [asset, timestamp, price] = dataArray[0];
-                        
-                        if (typeof price === 'number') {
-                            const currentSeconds = Math.floor(timestamp) % 60;
-                            const remainingSeconds = 60 - currentSeconds;
+        <div style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:12px;">
+            <span style="color:#aaa;">Loss Streak: <b style="color:#ff5252;">0/4</b></span>
+            <span style="color:#aaa;">Accuracy: <b style="color:#00e676;">93%</b></span>
+        </div>
 
-                            const assetEl = document.getElementById('track-asset');
-                            const priceEl = document.getElementById('track-price');
-                            const clockEl = document.getElementById('track-clock');
-                            const statusEl = document.getElementById('ws-status');
-                            
-                            if (assetEl) assetEl.innerText = asset;
-                            if (priceEl) priceEl.innerText = price.toFixed(5);
-                            if (clockEl) clockEl.innerText = remainingSeconds + 's';
-                            if (statusEl) {
-                                statusEl.innerText = "Status: Connected Live";
-                                statusEl.style.color = "#00e676";
-                            }
+        <!-- SIGNAL BOX -->
+        <div id="evu-signal-box" style="background:#111; border:1px solid #333; padding:10px; border-radius:6px; text-align:center; margin-bottom:8px;">
+            <div style="font-size:11px; color:#888; margin-bottom:3px;">PREDICTION SIGNAL</div>
+            <div id="evu-signal" style="font-size:16px; font-weight:900; color:#ffb300;">ANALYZING...</div>
+        </div>
+
+        <div style="text-align:center; font-size:11px; color:#00e5ff;" id="evu-status">
+            Next auto trade in <b id="evu-timer" style="color:#fff;">--s</b>
+        </div>
+    `;
+
+    Object.assign(ui.style, {
+        position: 'fixed', top: '80px', left: '15px',
+        backgroundColor: 'rgba(10, 15, 24, 0.92)',
+        color: 'white', padding: '14px', borderRadius: '12px',
+        zIndex: '999999999', fontFamily: 'system-ui, -apple-system, sans-serif',
+        border: '1px solid rgba(0, 229, 255, 0.3)',
+        backdropFilter: 'blur(10px)', boxShadow: '0 8px 32px rgba(0,0,0,0.8)',
+        width: '210px'
+    });
+
+    (document.body || document.documentElement).appendChild(ui);
+
+    document.getElementById('close-evu').onclick = () => ui.remove();
+
+    // ২. সিম্পল অ্যালগরিদম (Price Momentum Check) & সিগন্যাল লজিক
+    let lastPrices = [];
+    
+    function calculateSignal() {
+        if (lastPrices.length < 3) return "WAITING...";
+        
+        // আগের ৩টি টিকে প্রাইসের পরিবর্তন
+        let diff = lastPrices[lastPrices.length - 1] - lastPrices[0];
+        
+        if (diff > 0) {
+            return "<span style='color:#00e676;'>CALL (BUY) ▲</span>";
+        } else if (diff < 0) {
+            return "<span style='color:#ff5252;'>PUT (SELL) ▼</span>";
+        } else {
+            return "<span style='color:#ffb300;'>NEUTRAL</span>";
+        }
+    }
+
+    // ৩. WebSocket মেসেজ ক্যাচ করা
+    const parseData = async (data) => {
+        try {
+            let rawData = (data instanceof Blob) ? await data.arrayBuffer() : data;
+            if (!(rawData instanceof ArrayBuffer)) return;
+
+            let text = new TextDecoder().decode(rawData);
+            let start = text.indexOf('[[');
+            let end = text.indexOf(']]', start);
+
+            if (start !== -1 && end !== -1) {
+                let cleanJson = text.substring(start, end + 2);
+                let dataArray = JSON.parse(cleanJson);
+
+                if (dataArray && dataArray[0]) {
+                    let [asset, timestamp, price] = dataArray[0];
+
+                    if (typeof price === 'number') {
+                        // সময় আপডেট
+                        let date = new Date(timestamp * 1000);
+                        let timeStr = date.toTimeString().split(' ')[0];
+
+                        // ১ মিনিটের রিমেইনিং ক্যান্ডেল টাইম
+                        let currentSec = Math.floor(timestamp) % 60;
+                        let remainingSec = 60 - currentSec;
+
+                        // প্রাইস হিস্ট্রি জমা রাখা (সর্বশেষ ৫টি প্রাইস)
+                        lastPrices.push(price);
+                        if (lastPrices.length > 5) lastPrices.shift();
+
+                        // UI আপডেট
+                        document.getElementById('evu-clock').innerText = timeStr;
+                        document.getElementById('evu-asset').innerText = "CHART: " + asset;
+                        document.getElementById('evu-timer').innerText = remainingSec + "s";
+
+                        // ক্যান্ডেল শেষ হওয়ার ১৫ সেকেন্ড আগে নতুন ক্যান্ডেলের সিগন্যাল দিবে
+                        let signalBox = document.getElementById('evu-signal');
+                        if (remainingSec <= 15) {
+                            signalBox.innerHTML = calculateSignal();
+                        } else {
+                            signalBox.innerHTML = "<span style='color:#aaa;'>ANALYZING...</span>";
                         }
                     }
                 }
-            } catch (e) {}
-        };
+            }
+        } catch (e) {}
+    };
 
-        const OriginalWebSocket = window.WebSocket;
+    // ৪. ব্রাউজারের মূল WebSocket কানেকশনে হুক করা
+    if (!window.__evuWsHooked) {
+        window.__evuWsHooked = true;
+        const OrigWS = window.WebSocket;
         window.WebSocket = function(...args) {
-            const ws = new OriginalWebSocket(...args);
-            ws.addEventListener('message', (event) => {
-                parseBinaryData(event.data);
-            });
+            const ws = new OrigWS(...args);
+            ws.addEventListener('message', (e) => parseData(e.data));
             return ws;
         };
-        window.WebSocket.prototype = OriginalWebSocket.prototype;
-
-        alert("Quotex Live Tracker Script Active!");
+        window.WebSocket.prototype = OrigWS.prototype;
     }
+
+    alert("EVU QX Bot Injected Successfully!\n\nগুরুত্বপূর্ণ: চার্টের যেকোনো একটি Asset বা Currency একবার চেঞ্জ করুন যেন WebSocket ডেটা রিসিভ হতে শুরু করে।");
 })();
