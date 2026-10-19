@@ -1,39 +1,40 @@
 (function() {
-    // আগের ইউআই থাকলে রিমুভ করবে
-    if (document.getElementById('evu-qx-tracker')) {
-        document.getElementById('evu-qx-tracker').remove();
+    // Jodi age kono box theke thake seta remove korbe
+    if (document.getElementById('evu-qx-bot')) {
+        document.getElementById('evu-qx-bot').remove();
     }
 
-    // ১. EVU QX স্টাইলের ফ্লোটিং UI তৈরি
+    // ১. EVU QX স্টাইলের মডার্ন ফ্লোটিং UI তৈরি
     const ui = document.createElement('div');
-    ui.id = 'evu-qx-tracker';
+    ui.id = 'evu-qx-bot';
     ui.innerHTML = `
-        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(0,229,255,0.2); padding-bottom:8px; margin-bottom:10px;">
+        <div id="evu-header" style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(0,229,255,0.2); padding-bottom:8px; margin-bottom:10px; cursor:grab;">
             <div style="display:flex; align-items:center; gap:6px;">
                 <span style="background:#00e5ff; width:8px; height:8px; border-radius:50%; box-shadow:0 0 8px #00e5ff;"></span>
-                <span style="font-weight:900; color:#fff; font-size:14px; letter-spacing:1px; font-family:sans-serif;">EVU QX</span>
+                <span style="font-weight:900; color:#fff; font-size:14px; letter-spacing:1px; font-family:sans-serif;">EVU QX BOT</span>
             </div>
-            <span id="close-evu" style="cursor:pointer; color:#888; font-size:16px;">✕</span>
+            <span id="close-evu" style="cursor:pointer; color:#888; font-size:16px; padding:0 5px;">✕</span>
         </div>
 
-        <div style="background:rgba(0,0,0,0.4); padding:8px; border-radius:6px; margin-bottom:8px; text-align:center;">
-            <div style="font-size:11px; color:#00e5ff; text-transform:uppercase;">CHART TIME</div>
-            <div id="evu-clock" style="font-size:15px; font-weight:bold; color:#fff;">--:--:--</div>
+        <div style="background:rgba(0,0,0,0.5); padding:8px; border-radius:6px; margin-bottom:8px; text-align:center;">
+            <div style="font-size:10px; color:#00e5ff; text-transform:uppercase;">CHART TIME</div>
+            <div id="evu-clock" style="font-size:14px; font-weight:bold; color:#fff;">--:--:--</div>
         </div>
 
         <div style="background:rgba(0,229,255,0.05); border:1px solid rgba(0,229,255,0.2); padding:8px; border-radius:6px; margin-bottom:8px; text-align:center;">
-            <div id="evu-asset" style="font-size:12px; font-weight:bold; color:#fff;">CHART: LOADING...</div>
+            <div id="evu-asset" style="font-size:11px; font-weight:bold; color:#fff;">CHART: LOADING...</div>
+            <div id="evu-price" style="font-size:13px; font-weight:bold; color:#ffb300; margin-top:3px;">Price: 0.0000</div>
         </div>
 
-        <div style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:12px;">
+        <div style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:11px;">
             <span style="color:#aaa;">Loss Streak: <b style="color:#ff5252;">0/4</b></span>
             <span style="color:#aaa;">Accuracy: <b style="color:#00e676;">93%</b></span>
         </div>
 
         <!-- SIGNAL BOX -->
         <div id="evu-signal-box" style="background:#111; border:1px solid #333; padding:10px; border-radius:6px; text-align:center; margin-bottom:8px;">
-            <div style="font-size:11px; color:#888; margin-bottom:3px;">PREDICTION SIGNAL</div>
-            <div id="evu-signal" style="font-size:16px; font-weight:900; color:#ffb300;">ANALYZING...</div>
+            <div style="font-size:10px; color:#888; margin-bottom:3px;">NEXT CANDLE SIGNAL</div>
+            <div id="evu-signal" style="font-size:15px; font-weight:900; color:#ffb300;">ANALYZING...</div>
         </div>
 
         <div style="text-align:center; font-size:11px; color:#00e5ff;" id="evu-status">
@@ -43,38 +44,61 @@
 
     Object.assign(ui.style, {
         position: 'fixed', top: '80px', left: '15px',
-        backgroundColor: 'rgba(10, 15, 24, 0.92)',
+        backgroundColor: 'rgba(10, 15, 24, 0.95)',
         color: 'white', padding: '14px', borderRadius: '12px',
         zIndex: '999999999', fontFamily: 'system-ui, -apple-system, sans-serif',
-        border: '1px solid rgba(0, 229, 255, 0.3)',
+        border: '1px solid rgba(0, 229, 255, 0.4)',
         backdropFilter: 'blur(10px)', boxShadow: '0 8px 32px rgba(0,0,0,0.8)',
-        width: '210px'
+        width: '220px', userSelect: 'none'
     });
 
     (document.body || document.documentElement).appendChild(ui);
 
-    document.getElementById('close-evu').onclick = () => ui.remove();
+    // ২. ড্র্যাগ এবং মুভ করার লজিক (মোবাইল ও পিসি দুটোর জন্যই কাজ করবে)
+    let isDragging = false, startX, startY, initialLeft, initialTop;
+    const header = document.getElementById('evu-header');
 
-    // ২. সিম্পল অ্যালগরিদম (Price Momentum Check) & সিগন্যাল লজিক
-    let lastPrices = [];
-    
-    function calculateSignal() {
-        if (lastPrices.length < 3) return "WAITING...";
-        
-        // আগের ৩টি টিকে প্রাইসের পরিবর্তন
-        let diff = lastPrices[lastPrices.length - 1] - lastPrices[0];
-        
-        if (diff > 0) {
-            return "<span style='color:#00e676;'>CALL (BUY) ▲</span>";
-        } else if (diff < 0) {
-            return "<span style='color:#ff5252;'>PUT (SELL) ▼</span>";
-        } else {
-            return "<span style='color:#ffb300;'>NEUTRAL</span>";
-        }
+    header.addEventListener('mousedown', dragStart);
+    header.addEventListener('touchstart', dragStart, {passive: true});
+
+    function dragStart(e) {
+        isDragging = true;
+        let clientX = e.clientX || e.touches[0].clientX;
+        let clientY = e.clientY || e.touches[0].clientY;
+        startX = clientX;
+        startY = clientY;
+        initialLeft = ui.offsetLeft;
+        initialTop = ui.offsetTop;
+
+        document.addEventListener('mousemove', dragMove);
+        document.addEventListener('mouseup', dragEnd);
+        document.addEventListener('touchmove', dragMove, {passive: true});
+        document.addEventListener('touchend', dragEnd);
     }
 
-    // ৩. WebSocket মেসেজ ক্যাচ করা
-    const parseData = async (data) => {
+    function dragMove(e) {
+        if (!isDragging) return;
+        let clientX = e.clientX || e.touches[0].clientX;
+        let clientY = e.clientY || e.touches[0].clientY;
+        let dx = clientX - startX;
+        let dy = clientY - startY;
+        ui.style.left = (initialLeft + dx) + 'px';
+        ui.style.top = (initialTop + dy) + 'px';
+    }
+
+    function dragEnd() {
+        isDragging = false;
+        document.removeEventListener('mousemove', dragMove);
+        document.removeEventListener('mouseup', dragEnd);
+        document.removeEventListener('touchmove', dragMove);
+        document.removeEventListener('touchend', dragEnd);
+    }
+
+    document.getElementById('close-evu').onclick = () => ui.remove();
+
+    // ৩. WebSocket ইন্টারসেপ্ট ও সিগন্যাল লজিক
+    let prices = [];
+    const parseWsData = async (data) => {
         try {
             let rawData = (data instanceof Blob) ? await data.arrayBuffer() : data;
             if (!(rawData instanceof ArrayBuffer)) return;
@@ -91,29 +115,36 @@
                     let [asset, timestamp, price] = dataArray[0];
 
                     if (typeof price === 'number') {
-                        // সময় আপডেট
                         let date = new Date(timestamp * 1000);
                         let timeStr = date.toTimeString().split(' ')[0];
+                        let sec = Math.floor(timestamp) % 60;
+                        let remaining = 60 - sec;
 
-                        // ১ মিনিটের রিমেইনিং ক্যান্ডেল টাইম
-                        let currentSec = Math.floor(timestamp) % 60;
-                        let remainingSec = 60 - currentSec;
+                        prices.push(price);
+                        if (prices.length > 5) prices.shift();
 
-                        // প্রাইস হিস্ট্রি জমা রাখা (সর্বশেষ ৫টি প্রাইস)
-                        lastPrices.push(price);
-                        if (lastPrices.length > 5) lastPrices.shift();
-
-                        // UI আপডেট
+                        // UI update
                         document.getElementById('evu-clock').innerText = timeStr;
                         document.getElementById('evu-asset').innerText = "CHART: " + asset;
-                        document.getElementById('evu-timer').innerText = remainingSec + "s";
+                        document.getElementById('evu-price').innerText = "Price: " + price.toFixed(5);
+                        document.getElementById('evu-timer').innerText = remaining + "s";
+                        document.getElementById('evu-status').innerHTML = "Status: <b style='color:#00e676;'>Live Connected</b>";
 
-                        // ক্যান্ডেল শেষ হওয়ার ১৫ সেকেন্ড আগে নতুন ক্যান্ডেলের সিগন্যাল দিবে
-                        let signalBox = document.getElementById('evu-signal');
-                        if (remainingSec <= 15) {
-                            signalBox.innerHTML = calculateSignal();
+                        // 1 Minute Candle Signal Logic (Last 15 seconds)
+                        let signalEl = document.getElementById('evu-signal');
+                        if (remaining <= 15) {
+                            if (prices.length >= 3) {
+                                let diff = prices[prices.length - 1] - prices[0];
+                                if (diff > 0) {
+                                    signalEl.innerHTML = "<span style='color:#00e676;'>CALL (BUY) ▲</span>";
+                                } else {
+                                    signalEl.innerHTML = "<span style='color:#ff5252;'>PUT (SELL) ▼</span>";
+                                }
+                            } else {
+                                signalEl.innerHTML = "<span style='color:#ffb300;'>WAITING...</span>";
+                            }
                         } else {
-                            signalBox.innerHTML = "<span style='color:#aaa;'>ANALYZING...</span>";
+                            signalEl.innerHTML = "<span style='color:#888;'>ANALYZING...</span>";
                         }
                     }
                 }
@@ -121,17 +152,16 @@
         } catch (e) {}
     };
 
-    // ৪. ব্রাউজারের মূল WebSocket কানেকশনে হুক করা
     if (!window.__evuWsHooked) {
         window.__evuWsHooked = true;
         const OrigWS = window.WebSocket;
         window.WebSocket = function(...args) {
             const ws = new OrigWS(...args);
-            ws.addEventListener('message', (e) => parseData(e.data));
+            ws.addEventListener('message', (e) => parseWsData(e.data));
             return ws;
         };
         window.WebSocket.prototype = OrigWS.prototype;
     }
 
-    alert("EVU QX Bot Injected Successfully!\n\nগুরুত্বপূর্ণ: চার্টের যেকোনো একটি Asset বা Currency একবার চেঞ্জ করুন যেন WebSocket ডেটা রিসিভ হতে শুরু করে।");
+    alert("EVU QX Bot Loaded Successfully! Box-ti header theke dhore jekono jaygay move korte parben.");
 })();
